@@ -17,7 +17,7 @@ jobs:
     
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@71cf2267d89c5cb81562390fa70a37fa40b1305e # v6
       
       - name: Hello World
         run: echo "Hello World! 🌍"

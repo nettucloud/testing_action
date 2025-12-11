@@ -1,0 +1,115 @@
+name: Hello World
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  hello-world:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Hello World
+        run: echo "Hello World! 🌍"
+      
+      - name: Get repository permissions
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "=== Repository Permissions ==="
+          
+          # Get repository information
+          REPO_OWNER="${{ github.repository_owner }}"
+          REPO_NAME="${{ github.event.repository.name }}"
+          
+          echo "Repository: $REPO_OWNER/$REPO_NAME"
+          echo "GitHub Token: ${GITHUB_TOKEN:0:10}... (truncated for security)"
+          
+          # Check what permissions the token has by making API calls
+          echo ""
+          echo "--- Testing API Access ---"
+          
+          # Try to get repository details (requires read access)
+          echo "Testing repository read access..."
+          REPO_RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME")
+          
+          HTTP_STATUS=$(echo "$REPO_RESPONSE" | grep "HTTP_STATUS" | cut -d: -f2)
+          if [ "$HTTP_STATUS" = "200" ]; then
+            echo "✅ Repository read access: GRANTED"
+            echo "$REPO_RESPONSE" | grep -v "HTTP_STATUS" | jq -r '.permissions // "No permissions object found"' 2>/dev/null || echo "Could not parse permissions"
+          else
+            echo "❌ Repository read access: DENIED (HTTP $HTTP_STATUS)"
+          fi
+          
+          # Try to get authenticated user info
+          echo ""
+          echo "Testing authenticated user access..."
+          USER_RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/user")
+          
+          HTTP_STATUS=$(echo "$USER_RESPONSE" | grep "HTTP_STATUS" | cut -d: -f2)
+          if [ "$HTTP_STATUS" = "200" ]; then
+            echo "✅ User API access: GRANTED"
+            USER_LOGIN=$(echo "$USER_RESPONSE" | grep -v "HTTP_STATUS" | jq -r '.login // "unknown"' 2>/dev/null)
+            echo "Authenticated as: $USER_LOGIN"
+          else
+            echo "❌ User API access: DENIED (HTTP $HTTP_STATUS)"
+          fi
+          
+          # Try to check repository permissions endpoint
+          echo ""
+          echo "Testing repository permissions endpoint..."
+          PERM_RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME" | grep -v "HTTP_STATUS")
+          
+          if command -v jq &> /dev/null; then
+            echo "Repository permissions from API:"
+            echo "$PERM_RESPONSE" | jq -r '.permissions // empty' 2>/dev/null || echo "No permissions object in response"
+          else
+            echo "jq not available, showing raw response snippet:"
+            echo "$PERM_RESPONSE" | head -20
+          fi
+          
+          # Display workflow permissions
+          echo ""
+          echo "--- Workflow Permissions (from workflow file) ---"
+          echo "contents: read"
+          
+          # Try to get repository collaborators to test permissions
+          echo ""
+          echo "Testing repository collaborators access..."
+          COLLAB_RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/collaborators")
+          
+          HTTP_STATUS=$(echo "$COLLAB_RESPONSE" | grep "HTTP_STATUS" | cut -d: -f2)
+          if [ "$HTTP_STATUS" = "200" ]; then
+            echo "✅ Repository collaborators read access: GRANTED"
+          elif [ "$HTTP_STATUS" = "403" ]; then
+            echo "⚠️  Repository collaborators read access: FORBIDDEN (insufficient permissions)"
+          else
+            echo "❌ Repository collaborators read access: DENIED (HTTP $HTTP_STATUS)"
+          fi
+          
+          echo ""
+          echo "=== Summary ==="
+          echo "The GITHUB_TOKEN has the permissions defined in the workflow's 'permissions' section."
+          echo "Default token permissions are limited for security. To grant additional permissions,"
+          echo "update the 'permissions' section in this workflow file."
+
